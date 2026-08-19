@@ -11,17 +11,17 @@ def parse_campaign_csv(file_or_buffer):
     try:
         return pd.read_csv(file_or_buffer)
     except pd.errors.EmptyDataError:
-        raise ValueError("Файл пустой или не содержит данных.")
+        raise ValueError("The file is empty or contains no data.")
     except pd.errors.ParserError:
-        raise ValueError("Не получилось прочитать файл — проверь, что это CSV.")
+        raise ValueError("Couldn't read the file — make sure it's a CSV.")
 
 
 def compute_summary(df):
     missing = [col for col in REQUIRED_COLUMNS if col not in df.columns]
     if missing:
         raise ValueError(
-            f"В файле не хватает колонок: {', '.join(missing)}. "
-            f"Нужны: {', '.join(REQUIRED_COLUMNS)}."
+            f"The file is missing columns: {', '.join(missing)}. "
+            f"Required: {', '.join(REQUIRED_COLUMNS)}."
         )
     numeric_cols = ["impressions", "clicks", "conversions", "spend", "revenue"]
     incomplete_mask = df[numeric_cols].isna().any(axis=1)

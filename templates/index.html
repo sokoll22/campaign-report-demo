@@ -20,7 +20,7 @@
 </head>
 <body>
   <h1>Campaign Report Demo</h1>
-  <div class="metric-line">Было ~40 минут ручной сборки отчёта → стало несколько секунд. Демо-данные, ничего не сохраняется.</div>
+  <div class="metric-line">~40 minutes of manual report building → now a few seconds. Demo data, nothing is stored.</div>
 
   {% if error %}
     <div class="error">{{ error }}</div>
@@ -28,33 +28,33 @@
 
   <form class="upload-box" action="/analyze" method="post" enctype="multipart/form-data">
     <input type="file" name="csv_file" accept=".csv">
-    <button type="submit">Собрать отчёт</button>
+    <button type="submit">Build report</button>
   </form>
 
   {% if result %}
     <div class="headline">{{ result.report.headline }}</div>
 
     {% if not result.summary.has_trend_data %}
-      <span class="badge">данных мало для трендов</span>
+      <span class="badge">not enough data for trends</span>
     {% endif %}
 
-    <h3>Инсайты</h3>
+    <h3>Insights</h3>
     <ul>
       {% for line in result.report.insights %}
         <li>{{ line }}</li>
       {% endfor %}
     </ul>
 
-    <h3>Рекомендации</h3>
+    <h3>Recommendations</h3>
     <ul>
       {% for line in result.report.recommendations %}
         <li>{{ line }}</li>
       {% endfor %}
     </ul>
 
-    <h3>По каналам</h3>
+    <h3>By channel</h3>
     <table class="channel-table">
-      <tr><th>Канал</th><th>Расход</th><th>Выручка</th><th>ROI</th><th>CTR</th></tr>
+      <tr><th>Channel</th><th>Spend</th><th>Revenue</th><th>ROI</th><th>CTR</th></tr>
       {% for c in result.channels %}
       <tr>
         <td>{{ c.channel }}</td>
@@ -67,10 +67,10 @@
     </table>
 
     {% if result.summary.incomplete_dates %}
-      <div class="incomplete">Неполные данные за: {{ result.summary.incomplete_dates | join(', ') }}</div>
+      <div class="incomplete">Incomplete data for: {{ result.summary.incomplete_dates | join(', ') }}</div>
     {% endif %}
 
-    <div class="mode">режим: {{ result.report.mode }}</div>
+    <div class="mode">mode: {{ result.report.mode }}</div>
   {% endif %}
 </body>
 </html>

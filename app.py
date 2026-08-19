@@ -17,7 +17,7 @@ def index():
 def analyze():
     file = request.files.get("csv_file")
     if not file or file.filename == "":
-        return render_template("index.html", error="Загрузи CSV-файл.", result=None)
+        return render_template("index.html", error="Please upload a CSV file.", result=None)
 
     try:
         df = parse_campaign_csv(file.stream)

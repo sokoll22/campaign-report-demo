@@ -58,7 +58,7 @@ def test_empty_file_raises_clear_error():
     with pytest.raises(ValueError) as exc_info:
         parse_campaign_csv(io.StringIO(""))
 
-    assert "пуст" in str(exc_info.value).lower()
+    assert "empty" in str(exc_info.value).lower()
 
 
 SINGLE_DATE_CSV = """date,channel,impressions,clicks,conversions,spend,revenue
