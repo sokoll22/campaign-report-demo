@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Campaign Report Demo</title>
+  <style>
+    body { font-family: -apple-system, Arial, sans-serif; max-width: 760px; margin: 40px auto; color: #1a1a1a; }
+    h1 { font-size: 22px; }
+    .metric-line { color: #6a6a6a; font-size: 14px; margin-bottom: 24px; }
+    .upload-box { border: 1px dashed #bbb; padding: 20px; border-radius: 8px; }
+    .error { background: #fdecea; color: #a4262c; padding: 12px 16px; border-radius: 6px; margin-bottom: 16px; }
+    .headline { font-size: 18px; font-weight: 600; margin: 20px 0 10px; }
+    ul { padding-left: 20px; }
+    .channel-table { border-collapse: collapse; width: 100%; margin-top: 12px; }
+    .channel-table th, .channel-table td { border: 1px solid #e0e0e0; padding: 6px 10px; text-align: left; font-size: 14px; }
+    .badge { display: inline-block; background: #eef; color: #335; padding: 2px 8px; border-radius: 10px; font-size: 12px; }
+    .incomplete { color: #a4262c; font-size: 13px; margin-top: 8px; }
+    .mode { font-size: 12px; color: #999; margin-top: 20px; }
+  </style>
+</head>
+<body>
+  <h1>Campaign Report Demo</h1>
+  <div class="metric-line">Было ~40 минут ручной сборки отчёта → стало несколько секунд. Демо-данные, ничего не сохраняется.</div>
+
+  {% if error %}
+    <div class="error">{{ error }}</div>
+  {% endif %}
+
+  <form class="upload-box" action="/analyze" method="post" enctype="multipart/form-data">
+    <input type="file" name="csv_file" accept=".csv">
+    <button type="submit">Собрать отчёт</button>
+  </form>
+
+  {% if result %}
+    <div class="headline">{{ result.report.headline }}</div>
+
+    {% if not result.summary.has_trend_data %}
+      <span class="badge">данных мало для трендов</span>
+    {% endif %}
+
+    <h3>Инсайты</h3>
+    <ul>
+      {% for line in result.report.insights %}
+        <li>{{ line }}</li>
+      {% endfor %}
+    </ul>
+
+    <h3>Рекомендации</h3>
+    <ul>
+      {% for line in result.report.recommendations %}
+        <li>{{ line }}</li>
+      {% endfor %}
+    </ul>
+
+    <h3>По каналам</h3>
+    <table class="channel-table">
+      <tr><th>Канал</th><th>Расход</th><th>Выручка</th><th>ROI</th><th>CTR</th></tr>
+      {% for c in result.channels %}
+      <tr>
+        <td>{{ c.channel }}</td>
+        <td>${{ "%.0f"|format(c.spend) }}</td>
+        <td>${{ "%.0f"|format(c.revenue) }}</td>
+        <td>{{ "%+.0f"|format(c.roi * 100) }}%</td>
+        <td>{{ "%.1f"|format(c.ctr * 100) }}%</td>
+      </tr>
+      {% endfor %}
+    </table>
+
+    {% if result.summary.incomplete_dates %}
+      <div class="incomplete">Неполные данные за: {{ result.summary.incomplete_dates | join(', ') }}</div>
+    {% endif %}
+
+    <div class="mode">режим: {{ result.report.mode }}</div>
+  {% endif %}
+</body>
+</html>
