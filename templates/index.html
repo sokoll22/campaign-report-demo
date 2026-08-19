@@ -8,6 +8,13 @@
     h1 { font-size: 22px; }
     .metric-line { color: #6a6a6a; font-size: 14px; margin-bottom: 24px; }
     .upload-box { border: 1px dashed #bbb; padding: 20px; border-radius: 8px; }
+    .file-input { display: none; }
+    .file-label {
+      display: inline-block; padding: 8px 14px; border: 1px solid #ccc; border-radius: 6px;
+      background: #f4f4f4; color: #1a1a1a; font-size: 14px; cursor: pointer; margin-right: 8px;
+    }
+    .file-label:hover { background: #eaeaea; }
+    .file-name { font-size: 14px; color: #666; margin-right: 12px; }
     .error { background: #fdecea; color: #a4262c; padding: 12px 16px; border-radius: 6px; margin-bottom: 16px; }
     .headline { font-size: 18px; font-weight: 600; margin: 20px 0 10px; }
     ul { padding-left: 20px; }
@@ -27,7 +34,10 @@
   {% endif %}
 
   <form class="upload-box" action="/analyze" method="post" enctype="multipart/form-data">
-    <input type="file" name="csv_file" accept=".csv">
+    <input class="file-input" type="file" id="csv_file" name="csv_file" accept=".csv"
+           onchange="document.getElementById('file_name_display').textContent = this.files.length ? this.files[0].name : 'No file chosen';">
+    <label class="file-label" for="csv_file">Choose CSV file</label>
+    <span class="file-name" id="file_name_display">No file chosen</span>
     <button type="submit">Build report</button>
   </form>
 
