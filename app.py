@@ -2,7 +2,7 @@ import os
 
 from flask import Flask, request, render_template
 
-from report_engine import parse_campaign_csv, compute_summary, compute_channel_metrics
+from report_engine import parse_campaign_file, compute_summary, compute_channel_metrics
 from report_text import generate_report
 
 app = Flask(__name__)
@@ -17,15 +17,30 @@ def index():
 def analyze():
     file = request.files.get("csv_file")
     if not file or file.filename == "":
-        return render_template("index.html", error="Please upload a CSV file.", result=None)
+        return render_template(
+            "index.html",
+            error="Please upload a CSV or Excel file (.csv, .xlsx, .xls).",
+            result=None,
+        )
 
     try:
-        df = parse_campaign_csv(file.stream)
+        df = parse_campaign_file(file.stream, file.filename)
         summary = compute_summary(df)
         channel_metrics = compute_channel_metrics(df)
         report = generate_report(summary, channel_metrics)
     except ValueError as e:
         return render_template("index.html", error=str(e), result=None)
+    except Exception:
+        # Подстраховка: любая непредвиденная ошибка (не ValueError) не должна
+        # показывать пользователю голый 500 или трейсбек — только понятную
+        # фразу. Сама ошибка уходит в лог сервера для разбора.
+        app.logger.exception("Unexpected error while building the report")
+        return render_template(
+            "index.html",
+            error="Something went wrong while building the report. Please try "
+            "again or use a different file.",
+            result=None,
+        )
 
     return render_template(
         "index.html",
