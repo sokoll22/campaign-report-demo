@@ -48,6 +48,10 @@
   {% endif %}
 
   <form class="upload-box" action="/analyze" method="post" enctype="multipart/form-data">
+    {# Секретный demo-токен (см. app.py) едет вместе с формой, только если
+       страница сама была открыта с верным ?key=... — обычный посетитель
+       без ссылки с токеном его не видит и не отправляет. #}
+    <input type="hidden" name="demo_key" value="{{ demo_key }}">
     <input class="file-input" type="file" id="csv_file" name="csv_file" accept=".csv,.xlsx,.xls"
            onchange="document.getElementById('file_name_display').textContent = this.files.length ? this.files[0].name : 'No file chosen';">
     <label class="file-label" for="csv_file">Choose CSV or Excel file</label>
