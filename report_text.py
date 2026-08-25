@@ -74,6 +74,56 @@ def _offline_report(summary, channel_metrics, mode="offline"):
     }
 
 
+def analyze_mismatched_document(df, allow_llm=False):
+    """Короткий AI-разбор загруженного файла, когда он прочитан (df есть),
+    но не подходит под схему кампании (нет нужных колонок). Добавлено
+    25.08.2026 по просьбе Макса.
+
+    Live-режим only, по решению Макса от 25.08.2026: без подтверждённого
+    demo-токена (allow_llm) или без ключа на сервере просто возвращаем
+    None — вызывающий код (app.py) в этом случае не покажет блок анализа,
+    останется только честная фраза "не хватает колонок". Никакого офлайн-
+    приближения не делаем: нельзя понять содержимое файла без модели, а
+    придумывать вывод по одним заголовкам колонок значило бы выдумывать
+    факты.
+    """
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not (allow_llm and api_key):
+        return None
+
+    columns = [str(c) for c in df.columns]
+    sample_rows = df.head(3).to_dict(orient="records")
+
+    import anthropic
+
+    client = anthropic.Anthropic(api_key=api_key)
+    prompt = (
+        "A user uploaded a file to a campaign-report tool, but it doesn't "
+        "match the expected campaign-metrics schema (date, channel, "
+        "impressions, clicks, conversions, spend, revenue). Here is what "
+        "the file actually contains:\n"
+        f"Columns: {columns}\n"
+        f"First rows: {sample_rows}\n"
+        "In 1-2 short sentences, explain in plain language what kind of "
+        "document this looks like and why it doesn't match the campaign-"
+        "report schema. Be specific about the columns you see. Return "
+        "ONLY plain text — no JSON, no markdown, no quotes."
+    )
+    try:
+        message = client.messages.create(
+            model="claude-sonnet-4-5",
+            max_tokens=200,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        text = message.content[0].text.strip()
+        return text or None
+    except Exception:
+        # Сеть, лимит, неожиданный формат ответа — что угодно. Не роняем
+        # страницу: без AI-разбора остаётся обычная честная ошибка о
+        # нехватке колонок, ровно как было бы без этой функции.
+        return None
+
+
 def generate_report(summary, channel_metrics, allow_llm=False):
     """Возвращает dict: headline, insights (list[str]), recommendations (list[str]), mode.
 

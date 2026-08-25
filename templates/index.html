@@ -57,6 +57,9 @@
 
   {% if error %}
     <div class="error">{{ error }}</div>
+    {% if doc_analysis %}
+      <div class="mapping-note"><strong>What this file looks like:</strong> {{ doc_analysis }}</div>
+    {% endif %}
   {% endif %}
 
   <form class="upload-box" action="/analyze" method="post" enctype="multipart/form-data">

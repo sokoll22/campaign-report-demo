@@ -4,7 +4,7 @@ import os
 from flask import Flask, request, render_template
 
 from report_engine import parse_campaign_file, compute_summary, compute_channel_metrics
-from report_text import generate_report
+from report_text import generate_report, analyze_mismatched_document
 
 app = Flask(__name__)
 
@@ -28,6 +28,7 @@ def _file_too_large(_error):
         "index.html",
         error="That file is too large — 5 MB max. Trim it or use a smaller sample.",
         result=None,
+        doc_analysis=None,
         unlocked=False,
         demo_key="",
     ), 413
@@ -54,6 +55,7 @@ def index():
         "index.html",
         error=None,
         result=None,
+        doc_analysis=None,
         unlocked=unlocked,
         demo_key=request.args.get("key", "") if unlocked else "",
     )
@@ -70,18 +72,50 @@ def analyze():
             "index.html",
             error="Please upload a CSV or Excel file (.csv, .xlsx, .xls).",
             result=None,
+            doc_analysis=None,
             unlocked=unlocked,
             demo_key=demo_key,
         )
 
     try:
         df = parse_campaign_file(file.stream, file.filename)
+    except ValueError as e:
+        # Файл не прочитан вообще (неподдержанный формат, пустой, битый) —
+        # df не существует, анализировать содержимое нечего, только сама
+        # фраза об ошибке.
+        return render_template(
+            "index.html", error=str(e), result=None, doc_analysis=None,
+            unlocked=unlocked, demo_key=demo_key,
+        )
+    except Exception:
+        app.logger.exception("Unexpected error while reading the file")
+        return render_template(
+            "index.html",
+            error="Something went wrong while reading the file. Please try "
+            "again or use a different file.",
+            result=None,
+            doc_analysis=None,
+            unlocked=unlocked,
+            demo_key=demo_key,
+        )
+
+    try:
         summary = compute_summary(df)
         channel_metrics = compute_channel_metrics(df)
         report = generate_report(summary, channel_metrics, allow_llm=unlocked)
     except ValueError as e:
+        # Файл прочитан (df есть), но не хватает нужных колонок кампании —
+        # это уже не "битый файл", а "не тот документ". Добавлено
+        # 25.08.2026 по просьбе Макса: в live-режиме (проверенный
+        # demo-токен + ключ на сервере) даём короткий AI-разбор, что это
+        # за документ на самом деле, вместо голой фразы об ошибке. Решение
+        # Макса: только live-режим — без него просто фраза об ошибке, без
+        # придуманного анализа.
+        doc_analysis = None
+        if unlocked:
+            doc_analysis = analyze_mismatched_document(df, allow_llm=unlocked)
         return render_template(
-            "index.html", error=str(e), result=None,
+            "index.html", error=str(e), result=None, doc_analysis=doc_analysis,
             unlocked=unlocked, demo_key=demo_key,
         )
     except Exception:
@@ -94,6 +128,7 @@ def analyze():
             error="Something went wrong while building the report. Please try "
             "again or use a different file.",
             result=None,
+            doc_analysis=None,
             unlocked=unlocked,
             demo_key=demo_key,
         )
@@ -102,6 +137,7 @@ def analyze():
         "index.html",
         error=None,
         result={"summary": summary, "channels": channel_metrics, "report": report},
+        doc_analysis=None,
         unlocked=unlocked,
         demo_key=demo_key,
     )
