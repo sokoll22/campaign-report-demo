@@ -23,6 +23,12 @@
     .badge { display: inline-block; background: #eef; color: #335; padding: 2px 8px; border-radius: 10px; font-size: 12px; }
     .incomplete { color: #a4262c; font-size: 13px; margin-top: 8px; }
     .mode { font-size: 12px; color: #999; margin-top: 20px; }
+    .mode-badge {
+      display: inline-block; font-size: 12px; font-weight: 600; letter-spacing: .03em;
+      text-transform: uppercase; padding: 4px 10px; border-radius: 99px; margin: 8px 0 4px;
+    }
+    .mode-badge.online { background: #e6f7ed; color: #1a7a41; }
+    .mode-badge.offline { background: #f4f4f4; color: #666; }
     .mapping-note { background: #eef2ff; color: #2f4bb0; font-size: 12.5px; padding: 8px 12px; border-radius: 6px; margin: 10px 0 4px; }
     .demo-switch { display: flex; gap: 6px; margin-bottom: 18px; }
     .demo-switch-link {
@@ -70,6 +76,9 @@
     {% endif %}
 
     <div class="headline">{{ result.report.headline }}</div>
+    <span class="mode-badge {{ 'online' if result.report.mode == 'online' else 'offline' }}">
+      {{ '● AI mode — live model' if result.report.mode == 'online' else '○ Offline mode — demo data' }}
+    </span>
 
     {% if not result.summary.has_trend_data %}
       <span class="badge">not enough data for trends</span>
@@ -107,7 +116,6 @@
       <div class="incomplete">Incomplete data for: {{ result.summary.incomplete_dates | join(', ') }}</div>
     {% endif %}
 
-    <div class="mode">mode: {{ result.report.mode }}</div>
   {% endif %}
 </body>
 </html>
