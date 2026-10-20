@@ -1,13 +1,12 @@
 """
-Демка публичная (нет логина), а с ANTHROPIC_API_KEY на сервере каждый вызов —
-реальные деньги. Добавлено 21.08.2026 после того, как Макс спросил, что будет,
-если демку без него найдёт и начнёт крутить кто-то посторонний: раньше факта
-наличия ключа на сервере хватало, чтобы ЛЮБОЙ посетитель, загрузивший файл,
-включил платный режим.
+The demo is public (no login), and with ANTHROPIC_API_KEY on the server every
+call costs real money. Previously the mere presence of the key on the server
+let ANY visitor who uploaded a file switch on paid mode.
 
-Эти тесты фиксируют контракт: живой режим (allow_llm=True в generate_report)
-включается ТОЛЬКО когда форма несёт верный DEMO_ACCESS_TOKEN в скрытом поле
-demo_key — само наличие ANTHROPIC_API_KEY на сервере недостаточно.
+These tests pin the contract: live mode (allow_llm=True in generate_report)
+is enabled ONLY when the form carries the correct DEMO_ACCESS_TOKEN in the
+hidden demo_key field; the server-side ANTHROPIC_API_KEY alone is not
+enough.
 """
 import io
 
@@ -27,7 +26,7 @@ def client(monkeypatch):
 
     import importlib
     import app as appmod
-    importlib.reload(appmod)  # подхватить переменные окружения из monkeypatch
+    importlib.reload(appmod)  # pick up environment variables from monkeypatch
 
     calls = []
 
@@ -82,12 +81,12 @@ def test_analyze_with_correct_demo_key_allows_llm(client):
 
 
 def test_oversized_upload_is_rejected_before_touching_memory(client):
-    """MAX_CONTENT_LENGTH (добавлено 21.08.2026): раньше загрузка файла не
-    имела предела размера вообще — любой посетитель мог занять память
-    бесплатного инстанса на Render большим файлом. Тело больше 5 МБ должно
-    быть отклонено с понятной ошибкой, а не дойти до парсинга."""
+    """MAX_CONTENT_LENGTH: uploads used to have no size limit at all, so any
+    visitor could exhaust the memory of the free Render instance with a big
+    file. A body over 5 MB must be rejected with a clear error instead of
+    reaching the parser."""
     web, calls = client
-    big_csv = CSV + ("2026-08-02,Google,1,1,1,1,1\n" * 400_000)  # заметно больше 5 МБ
+    big_csv = CSV + ("2026-08-02,Google,1,1,1,1,1\n" * 400_000)  # well over 5 MB
     assert len(big_csv) > 5 * 1024 * 1024
 
     r = web.post(
@@ -97,4 +96,4 @@ def test_oversized_upload_is_rejected_before_touching_memory(client):
     )
     assert r.status_code == 413
     assert "too large" in r.get_data(as_text=True)
-    assert calls == []  # до generate_report даже не дошло
+    assert calls == []  # generate_report was never reached

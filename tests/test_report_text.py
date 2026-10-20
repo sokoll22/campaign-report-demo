@@ -1,13 +1,14 @@
 """
-generate_report(): офлайн-шаблоны и парсинг JSON-ответа Claude в онлайн-режиме.
+generate_report(): offline templates and parsing of Claude's JSON response in
+online mode.
 
-Найдено 21.08.2026 при добавлении demo-токена (см. test_security_gate.py):
-онлайн-ветка возвращала headline/insights/recommendations как None (модель
-писала свободным текстом в raw_text, который никто дальше не разбирал) —
-шаблон index.html делает `{% for line in result.report.insights %}` и упал бы
-на первом же реальном прогоне. Переписано на структурированный JSON-ответ
-с честным откатом на офлайн-текст, если модель всё-таки не вернула валидный
-JSON — вместо падения страницы или тихой выдачи пустого отчёта.
+Regression found while adding the demo token (see test_security_gate.py): the
+online branch returned headline/insights/recommendations as None (the model
+wrote free text into raw_text, which nothing parsed), and index.html's
+`{% for line in result.report.insights %}` would have crashed on the first
+real run. Rewritten to a structured JSON response, with a fallback to offline
+text if the model still returns invalid JSON, instead of crashing the page or
+silently returning an empty report.
 """
 import sys
 import types
@@ -21,8 +22,8 @@ CHANNELS = [{"channel": "Google", "spend": 100.0, "revenue": 300.0, "roi": 2.0, 
 
 
 def _fake_anthropic(monkeypatch, response_text):
-    """Подменяет модуль anthropic на стаб, который возвращает заданный текст,
-    не делая реального сетевого вызова."""
+    """Replace the anthropic module with a stub that returns the given text,
+    without making a real network call."""
 
     class FakeContent:
         def __init__(self, text):
@@ -49,7 +50,7 @@ def test_allow_llm_false_returns_offline_without_network(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key")
     result = generate_report(SUMMARY, CHANNELS, allow_llm=False)
     assert result["mode"] == "offline"
-    assert result["insights"]  # непустой список — офлайн-шаблон сработал
+    assert result["insights"]  # non-empty list: the offline template worked
 
 
 def test_no_api_key_returns_offline_even_if_allow_llm_true(monkeypatch):
@@ -87,4 +88,4 @@ def test_invalid_json_response_falls_back_to_offline_without_crashing(monkeypatc
     _fake_anthropic(monkeypatch, "not json at all")
     result = generate_report(SUMMARY, CHANNELS, allow_llm=True)
     assert result["mode"].startswith("offline")
-    assert result["insights"]  # честный офлайн-контент, а не None/пусто
+    assert result["insights"]  # real offline content, not None/empty

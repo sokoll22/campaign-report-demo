@@ -1,4 +1,4 @@
-"""Разбор CSV/Excel с метриками кампании и расчёт сводных показателей."""
+"""Parse CSV/Excel campaign metrics and compute summary figures."""
 import re
 
 import pandas as pd
@@ -10,13 +10,12 @@ REQUIRED_COLUMNS = [
 NUMERIC_COLUMNS = ["impressions", "clicks", "conversions", "spend", "revenue"]
 SUPPORTED_EXTENSIONS = {".csv", ".xlsx", ".xls"}
 
-# Типовые альтернативные названия тех же колонок в экспортах Google/Meta/
-# LinkedIn Ads — сверены по памяти (без реального файла клиента на
-# 20.08.2026), совпадение только точное (по всей нормализованной строке,
-# не по подстроке), чтобы не сцепить два разных поля по случайному
-# совпадению куска названия. Данные не выдумываются: если совпадения нет,
-# колонка остаётся как есть, и дальше сработает обычная честная ошибка
-# «не хватает колонки».
+# Common alternative names for the same columns in Google/Meta/LinkedIn Ads
+# exports, recalled from memory (no real client file to check against).
+# Matching is exact on the whole normalized string, not on substrings, so two
+# different fields can't be joined by a partial name match. Nothing is
+# invented: with no match the column stays as is, and the usual "missing
+# column" error is raised later.
 CANONICAL_ALIASES = {
     "date": ["day", "reporting date", "reporting starts", "date range"],
     "channel": ["platform", "network", "source", "ad platform", "traffic source"],
@@ -42,18 +41,17 @@ def _normalize(name):
 
 
 def detect_and_rename_columns(df):
-    """Переименовывает колонки с типичными альтернативными названиями
-    (Google/Meta/LinkedIn Ads-экспорты) в канонические имена нашей схемы.
+    """Rename columns with common alternative names (Google/Meta/LinkedIn Ads
+    exports) to the canonical names of our schema.
 
-    Не трогает колонку, если канонический вариант уже есть в файле. Если
-    совпадения по алиасам нет — колонка остаётся как есть, ничего не
-    подставляется: дальше по-прежнему сработает честная ошибка о нехватке
-    колонки (в `compute_summary`), а не молчаливо неверный отчёт.
+    A column is left alone if its canonical name is already in the file. With
+    no alias match the column stays as is and nothing is filled in, so the
+    honest missing-column error in `compute_summary` still fires instead of a
+    silently wrong report.
 
-    Возвращает df с переименованными (где сматчилось) колонками; какие
-    именно переименования применены — кладёт в `df.attrs["column_mapping"]`
-    ({canonical: original_name}), чтобы показать пользователю, что к чему
-    привязано, а не прятать это.
+    Returns the df with matched columns renamed. The renames applied are
+    stored in `df.attrs["column_mapping"]` ({canonical: original_name}) so the
+    user can see what was mapped to what.
     """
     normalized_to_original = {_normalize(col): col for col in df.columns}
     canonical_present = {c for c in REQUIRED_COLUMNS if c in df.columns}
@@ -62,7 +60,7 @@ def detect_and_rename_columns(df):
     mapping_report = {}
     for canonical, aliases in CANONICAL_ALIASES.items():
         if canonical in canonical_present:
-            continue  # своё правильное имя уже есть — не трогаем
+            continue  # the correct name is already present, leave it alone
         for alias in aliases:
             original = normalized_to_original.get(_normalize(alias))
             if original is not None:
@@ -77,10 +75,10 @@ def detect_and_rename_columns(df):
 
 
 def parse_campaign_file(file_or_buffer, filename):
-    """Разбирает загруженный файл (CSV или Excel) в DataFrame.
+    """Parse an uploaded file (CSV or Excel) into a DataFrame.
 
-    Формат определяется по расширению `filename`, а не по содержимому —
-    это даёт понятную ошибку сразу, до попытки чтения файла.
+    The format is chosen by the extension of `filename`, not by content, so an
+    unsupported type fails with a clear error before any read is attempted.
     """
     ext = _extension(filename)
     if ext not in SUPPORTED_EXTENSIONS:
@@ -102,10 +100,9 @@ def parse_campaign_file(file_or_buffer, filename):
     except pd.errors.ParserError:
         raise ValueError("Couldn't read the file — make sure it's a valid CSV.")
     except Exception:
-        # Ловим всё остальное, что могут поднять openpyxl/xlrd на битом,
-        # не своём или защищённом паролем файле — пользователь должен
-        # увидеть понятную фразу на странице, а не техническую ошибку
-        # библиотеки или голый 500.
+        # Catch everything else openpyxl/xlrd can raise on a corrupted,
+        # wrong-type or password-protected file: the user should see a clear
+        # message on the page, not a library error or a bare 500.
         raise ValueError(
             f"Couldn't read the file — make sure it's a valid {ext} file, "
             "not corrupted or password-protected."
@@ -116,11 +113,10 @@ def parse_campaign_file(file_or_buffer, filename):
 
     df = detect_and_rename_columns(df)
 
-    # Приводим числовые колонки к числам сразу после чтения (один раз,
-    # до того как их увидят compute_summary/compute_channel_metrics).
-    # Мусор в числовой колонке (текст вместо числа) превращается в NaN,
-    # а не роняет расчёт — дальше он обрабатывается так же, как обычные
-    # пропуски (incomplete_dates), честно, без падения.
+    # Coerce numeric columns right after reading (once, before
+    # compute_summary/compute_channel_metrics see them). Junk in a numeric
+    # column (text instead of a number) becomes NaN instead of crashing the
+    # calculation, and is then handled like any other gap (incomplete_dates).
     for col in NUMERIC_COLUMNS:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")

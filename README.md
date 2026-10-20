@@ -1,103 +1,105 @@
-# Campaign Report — демка для агентств
+# Campaign Report Demo
 
-Клиент присылает CSV или Excel с показателями рекламной кампании → за секунды
-получает готовый отчёт: сводку, инсайты по каналам, рекомендации. То, на что у
-агентства раньше уходило ~40 минут ручной сборки в таблице.
+Upload a CSV or Excel export from Google, Meta or LinkedIn Ads and get a
+client-ready campaign report in seconds: a spend/revenue summary, ROI and CTR
+per channel, plain-language insights and recommendations. It replaces roughly
+40 minutes of manual spreadsheet work per report.
 
----
+**Live demo:** <https://campaign-report-demo.onrender.com>
 
-## Запуск
+## Quick start
 
 ```bash
-cd ~/DemoProjects2026/campaign-report-demo
 pip install -r requirements.txt
 python3 app.py
 ```
 
-Открыть <http://127.0.0.1:5002>.
+Then open <http://127.0.0.1:5002>.
 
-**Перед записью видео/показом клиенту выставить ключ** — тогда текст отчёта
-пишет живая модель, а не заготовленные шаблоны фраз:
+## Online and offline modes
+
+- **Offline (default):** no API key needed. The summary, insights and
+  recommendations are built from prewritten templates around the computed
+  numbers.
+- **Online:** set `ANTHROPIC_API_KEY` and the report text is written by a
+  Claude model instead.
 
 ```bash
 ANTHROPIC_API_KEY=sk-... python3 app.py
 ```
 
-Без ключа страница работает в офлайн-режиме: сводка и инсайты собираются из
-заготовленных шаблонов вокруг посчитанных цифр. Цифры всегда настоящие
-(посчитаны из CSV), меняется только качество текста вокруг них — это видно
-в отчёте по надписи `режим: offline`.
+In both modes the numbers are computed from the uploaded file, never by the
+model. Only the prose around them differs. The report shows which mode
+produced it.
 
-### Тестовый файл
+Because the page is public-facing, a server-side key alone does not enable
+online mode. The request must also carry the secret `DEMO_ACCESS_TOKEN` (open
+the page with `?key=<token>`), so random visitors cannot trigger paid API
+calls. If the model returns something unparseable, the report falls back to
+offline text and says so.
 
-Нужны колонки: `date, channel, impressions, clicks, conversions, spend, revenue`.
-Формат — CSV, .xlsx или .xls (определяется по расширению файла). Пример на
-несколько недель и три канала — в `tests/test_report_engine.py`
-(константа `VALID_CSV`) и в `media/` (использовался при записи демо-видео).
+## Input format
 
-### Что на странице
+Expected columns: `date, channel, impressions, clicks, conversions, spend, revenue`.
 
-- Загрузка CSV или Excel (.xlsx/.xls) → сводка (потрачено/выручка), инсайты
-  по каждому каналу (ROI, окупается или нет), рекомендации, таблица по
-  каналам (расход, выручка, ROI, CTR).
-- Типовые альтернативные названия колонок (как в экспортах Google/Meta/
-  LinkedIn Ads — например `Day`, `Cost`, `Impr.`, `Conv. value`)
-  распознаются автоматически и приводятся к нашей схеме; на странице
-  честно показывается, какая колонка к какому полю привязана. Данные не
-  подставляются — если поле реально не найдено ни под своим, ни под
-  известным альтернативным именем, остаётся обычная ошибка «не хватает
-  колонки».
-- Ничего не сохраняется — отчёт строится заново из загруженного файла
-  каждый раз.
-- Некорректный файл — понятная ошибка на странице, не падение: неверное
-  расширение, пустой файл, нет нужных колонок, битый/повреждённый Excel,
-  мусор вместо числа в числовой колонке (считается как пропуск, не роняет
-  расчёт), а также любая непредвиденная ошибка — подстраховка в `app.py`,
-  чтобы пользователь никогда не увидел голый 500.
+Accepted formats are `.csv`, `.xlsx` and `.xls` (detected by file extension).
+A sample file is defined in `tests/test_report_engine.py` (`VALID_CSV`).
 
----
+Common alternative column names from ad-platform exports (for example `Day`,
+`Cost`, `Impr.`, `Conv. value`) are recognized automatically and mapped to the
+schema above. The page shows exactly which column was mapped to which field.
+Matching is exact on the normalized header, and nothing is invented: if a
+field is not found under its own name or a known alias, you get the usual
+"missing column" error.
 
-## Как это устроено
+## What the page does
+
+- Upload a file and get a summary (spend and revenue), per-channel insights
+  (ROI, whether the channel pays off), recommendations, and a per-channel table
+  (spend, revenue, ROI, CTR).
+- Nothing is stored. The report is rebuilt from the uploaded file every time.
+- Bad input produces a clear message, not a crash: wrong extension, empty
+  file, missing columns, corrupted Excel file, files over 5 MB, and any
+  unexpected error (a catch-all in `app.py` so users never see a bare 500).
+  Non-numeric junk in a numeric column is treated as a missing value and
+  reported as incomplete data.
+
+## Architecture
 
 ```
-CSV-файл
+CSV / Excel file
    │
    ▼
-report_engine.py   парсинг + расчёт: сводка по кампании, метрики по каналам
-   │                (ROI, CTR), обработка неполных строк без падения
+report_engine.py   parsing + calculation: campaign summary, per-channel
+   │               metrics (ROI, CTR), incomplete rows handled without crashing
    ▼
-report_text.py     текстовая часть: заголовок, инсайты, рекомендации.
-                    Режимы: online (Anthropic API пишет текст по цифрам) /
-                    offline (шаблоны фраз вокруг тех же цифр)
-   │
+report_text.py     text layer: headline, insights, recommendations.
+   │               online (Anthropic API writes the text from the numbers) or
+   │               offline (templates around the same numbers)
    ▼
-app.py             Flask-обёртка: приём файла, вызов движка, рендер шаблона
+app.py             Flask wrapper: file upload, engine call, template rendering
 ```
 
-`report_engine.py` покрыт TDD-циклом (17/17 тестов, `tests/test_report_engine.py`) —
-именно цифры и разбор файла, у которых есть единственный правильный результат.
-Текст вокруг цифр (`report_text.py`) не тестируется автоматически: это проза,
-единственного верного варианта нет, проверяется вручную человеком.
+## Tests
 
-Для запуска полного набора тестов локально (включая тест на .xls) нужен ещё
-`pytest` и `xlwt` (только для теста — сам движок для чтения .xls в приложении
-это `xlrd`, он уже в `requirements.txt`):
+The suite has 28 tests, 17 of them for `report_engine.py`, which covers file
+parsing and the numbers, where there is a single correct result. The prose in
+`report_text.py` has no single right answer, so it is only checked for
+structure and fallback behavior.
 
 ```bash
 pip install pytest xlwt
 python3 -m pytest tests/ -q
 ```
 
-Для реального клиента меняется источник данных (например прямой экспорт из
-рекламного кабинета вместо ручной загрузки CSV) — логика расчёта и текста
-не трогается.
+`xlwt` is only needed by the `.xls` test. The app itself reads `.xls` with
+`xlrd`, which is already in `requirements.txt`.
 
-## Дальше
+## Roadmap
 
-- Автоматическая выгрузка данных из Google/Facebook/LinkedIn Ads API вместо
-  ручной загрузки CSV.
-- Сравнение с предыдущим периодом (рост/падение по каналам).
-- PDF-версия отчёта для отправки клиенту.
+- Period-over-period comparison (growth/decline per channel).
+- PDF export of the report.
+- Direct import from the Google/Meta/LinkedIn Ads APIs instead of manual upload.
 
 ## License
 

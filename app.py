@@ -8,22 +8,19 @@ from report_text import generate_report, analyze_mismatched_document
 
 app = Flask(__name__)
 
-# Ограничение на размер загружаемого файла (добавлено 21.08.2026). Страница
-# публичная и раньше не имела вообще никакого предела — кто угодно мог
-# отправить огромный файл и занять память бесплатного инстанса на Render.
-# Flask сам обрывает приём тела запроса, как только оно превышает этот размер
-# (до того, как файл целиком попадёт в память) и возвращает 413 — обработчик
-# ниже превращает это в понятную фразу на странице, а не голую ошибку.
-# 5 МБ — с большим запасом на реальный CSV/Excel с кампаниями, но не позволяет
-# залить что-то по-настоящему большое.
+# Cap on upload size. The page is public, so without a limit anyone could send
+# a huge file and exhaust the memory of the free Render instance. Flask aborts
+# reading the request body once it exceeds this size (before the whole file is
+# in memory) and returns 413; the handler below turns that into a readable
+# message. 5 MB leaves plenty of room for a real campaign CSV/Excel file.
 app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024
 
 
 @app.errorhandler(413)
 def _file_too_large(_error):
-    # Тело запроса могло оборваться на середине, поэтому не пытаемся читать
-    # request.form здесь (сам demo_key мог не долиститься) — просто честная
-    # ошибка, без сохранения unlock-состояния для этого конкретного ответа.
+    # The request body may have been cut off mid-way, so don't read
+    # request.form here (demo_key itself may be missing). Return a plain error
+    # without carrying over the unlock state.
     return render_template(
         "index.html",
         error="That file is too large — 5 MB max. Trim it or use a smaller sample.",
@@ -33,18 +30,17 @@ def _file_too_large(_error):
         demo_key="",
     ), 413
 
-# Секретный параметр демо-доступа (добавлено 21.08.2026). Страница публичная,
-# и без этого одного факта наличия ANTHROPIC_API_KEY на Render хватало, чтобы
-# ЛЮБОЙ загрузивший файл посетитель запускал платный вызов Claude. Теперь
-# живой режим требует ещё и токен, известный только Максу — передаётся через
-# ?key=... в ссылке на демку и держится в скрытом поле формы при отправке.
+# Secret demo-access token. The page is public, and a server-side
+# ANTHROPIC_API_KEY alone used to let ANY visitor who uploaded a file trigger
+# a paid Claude call. Live mode now also requires this token, passed as ?key=...
+# in the demo link and kept in a hidden form field on submit.
 DEMO_ACCESS_TOKEN = os.environ.get("DEMO_ACCESS_TOKEN", "")
 
 
 def _check_token(token: str) -> bool:
-    """Сравнение постоянного времени. Пустой/неверный DEMO_ACCESS_TOKEN на
-    сервере — живой режим выключен вообще, это безопасный вариант по
-    умолчанию, если Макс забыл его задать в Render."""
+    """Constant-time comparison. An empty or wrong DEMO_ACCESS_TOKEN on the
+    server disables live mode entirely, which is the safe default if the
+    token was never configured."""
     return bool(DEMO_ACCESS_TOKEN) and hmac.compare_digest(token or "", DEMO_ACCESS_TOKEN)
 
 
@@ -80,9 +76,8 @@ def analyze():
     try:
         df = parse_campaign_file(file.stream, file.filename)
     except ValueError as e:
-        # Файл не прочитан вообще (неподдержанный формат, пустой, битый) —
-        # df не существует, анализировать содержимое нечего, только сама
-        # фраза об ошибке.
+        # The file couldn't be read at all (unsupported format, empty,
+        # corrupted): there is no df to analyze, only the error message.
         return render_template(
             "index.html", error=str(e), result=None, doc_analysis=None,
             unlocked=unlocked, demo_key=demo_key,
@@ -104,13 +99,11 @@ def analyze():
         channel_metrics = compute_channel_metrics(df)
         report = generate_report(summary, channel_metrics, allow_llm=unlocked)
     except ValueError as e:
-        # Файл прочитан (df есть), но не хватает нужных колонок кампании —
-        # это уже не "битый файл", а "не тот документ". Добавлено
-        # 25.08.2026 по просьбе Макса: в live-режиме (проверенный
-        # demo-токен + ключ на сервере) даём короткий AI-разбор, что это
-        # за документ на самом деле, вместо голой фразы об ошибке. Решение
-        # Макса: только live-режим — без него просто фраза об ошибке, без
-        # придуманного анализа.
+        # The file was read (df exists) but lacks the required campaign
+        # columns: not a broken file, just the wrong document. In live mode
+        # (valid demo token + server key) show a short AI description of what
+        # the document is instead of a bare error. Live mode only: otherwise
+        # just the error message, with no made-up analysis.
         doc_analysis = None
         if unlocked:
             doc_analysis = analyze_mismatched_document(df, allow_llm=unlocked)
@@ -119,9 +112,9 @@ def analyze():
             unlocked=unlocked, demo_key=demo_key,
         )
     except Exception:
-        # Подстраховка: любая непредвиденная ошибка (не ValueError) не должна
-        # показывать пользователю голый 500 или трейсбек — только понятную
-        # фразу. Сама ошибка уходит в лог сервера для разбора.
+        # Safety net: any unexpected (non-ValueError) error must not show the
+        # user a bare 500 or traceback, only a readable message. The error
+        # itself goes to the server log.
         app.logger.exception("Unexpected error while building the report")
         return render_template(
             "index.html",
@@ -144,9 +137,9 @@ def analyze():
 
 
 if __name__ == "__main__":
-    # debug=True даёт удалённое выполнение кода через встроенный дебаггер —
-    # опасно, если страница когда-нибудь окажется доступна не только с
-    # localhost. По умолчанию выключено, включается явно через переменную
-    # окружения только для локальной разработки.
+    # debug=True exposes remote code execution via the built-in debugger,
+    # which is dangerous if the app is ever reachable beyond localhost. Off by
+    # default; enabled explicitly through an environment variable for local
+    # development only.
     debug_mode = os.environ.get("FLASK_DEBUG") == "1"
     app.run(host="0.0.0.0", port=5002, debug=debug_mode)

@@ -1,9 +1,9 @@
 """
-Тест 1 из брифа (project-name_BRIEF.md, "Критерий готовности"):
-корректный CSV -> отчёт строится с правильными суммарными показателями.
+Test 1 from the brief (campaign-report-demo_BRIEF.md, "Definition of done"):
+a valid CSV -> a report is built with the correct summary figures.
 
-Плюс (20.08.2026, бэклог STRATEGY.md): поддержка Excel (.xlsx/.xls) и более
-широкая обработка ошибок файла — не только для CSV.
+Also covers Excel (.xlsx/.xls) support and broader file-error handling, not
+just for CSV.
 """
 import io
 import pandas as pd
@@ -51,9 +51,9 @@ def test_incomplete_row_does_not_crash_and_is_flagged():
     df = parse_campaign_file(io.StringIO(INCOMPLETE_CSV), "campaign.csv")
     summary = compute_summary(df)
 
-    # Не падаем, считаем по тому, что есть
+    # Don't crash; compute from what is there
     assert summary["total_spend"] == 200
-    # И честно говорим, за какие даты данные неполные
+    # And say honestly which dates have incomplete data
     assert "2026-08-08" in summary["incomplete_dates"]
     assert "2026-08-01" not in summary["incomplete_dates"]
 
@@ -97,13 +97,13 @@ def test_channel_metrics_ranks_best_and_worst_roi():
     channels = compute_channel_metrics(df)
 
     by_name = {c["channel"]: c for c in channels}
-    # Google Ads: spend 420, revenue 1700 -> ROI положительный и большой
-    # Facebook Ads: spend 310, revenue 170 -> ROI отрицательный
+    # Google Ads: spend 420, revenue 1700 -> large positive ROI
+    # Facebook Ads: spend 310, revenue 170 -> negative ROI
     assert by_name["Google Ads"]["roi"] > by_name["Facebook Ads"]["roi"]
     assert by_name["Facebook Ads"]["roi"] < 0
 
 
-# --- Excel (.xlsx/.xls) — добавлено 20.08.2026 ---
+# --- Excel (.xlsx/.xls) ---
 
 def _valid_dataframe():
     return pd.DataFrame([
@@ -129,10 +129,9 @@ def test_xlsx_file_parses_same_as_csv():
 
 def test_xls_file_parses_same_as_csv():
     xlwt = pytest.importorskip("xlwt")
-    # pandas 2.x больше не регистрирует xlwt как ExcelWriter-движок,
-    # поэтому .xls-файл для теста собираем через xlwt напрямую, в обход
-    # pandas.to_excel — сам движок для ЧТЕНИЯ .xls (xlrd) в report_engine
-    # используется как обычно.
+    # pandas 2.x no longer registers xlwt as an ExcelWriter engine, so the
+    # .xls test file is built with xlwt directly, bypassing pandas.to_excel.
+    # The engine for READING .xls (xlrd) is used in report_engine as usual.
     book = xlwt.Workbook()
     sheet = book.add_sheet("Sheet1")
     df = _valid_dataframe()
@@ -181,20 +180,20 @@ GARBAGE_VALUE_CSV = """date,channel,impressions,clicks,conversions,spend,revenue
 
 
 def test_garbage_numeric_value_does_not_crash_and_is_flagged():
-    """Мусор в числовой колонке (текст вместо числа) — не 500, а честная
-    пометка "данные неполные", как и для пустых значений."""
+    """Junk in a numeric column (text instead of a number) must not cause a
+    500; it is flagged as "incomplete data", like empty values."""
     df = parse_campaign_file(io.StringIO(GARBAGE_VALUE_CSV), "campaign.csv")
     summary = compute_summary(df)
     channels = compute_channel_metrics(df)
 
     assert summary["total_spend"] == 200
     assert "2026-08-08" in summary["incomplete_dates"]
-    # compute_channel_metrics не падает и не молчит — канал есть в результате
+    # compute_channel_metrics neither crashes nor stays silent: the channel is in the result
     assert any(c["channel"] == "Google Ads" for c in channels)
 
 
-# --- Распознавание альтернативных названий колонок — добавлено 20.08.2026 ---
-# (типовые экспорты Google/Meta/LinkedIn Ads называют те же поля иначе)
+# --- Alternative column name recognition ---
+# (common Google/Meta/LinkedIn Ads exports name the same fields differently)
 
 ALIAS_HEADER_CSV = """Day,Platform,Impr.,Clicks (all),Conv.,Cost,Conv. value
 2026-08-01,Google Ads,1000,50,5,200,800
@@ -223,9 +222,9 @@ def test_alternate_column_names_are_reported_in_mapping():
 
 
 def test_canonical_column_already_present_is_not_overridden():
-    """Если в файле уже есть правильно названная колонка — алиас с тем же
-    смыслом (если бы вдруг тоже встретился) её не подменяет; mapping для
-    неё не создаётся, т.к. переименовывать нечего."""
+    """If the file already has a correctly named column, an alias with the same
+    meaning (should one also appear) doesn't replace it; no mapping is created
+    for it, since there is nothing to rename."""
     df = parse_campaign_file(io.StringIO(VALID_CSV), "campaign.csv")
     summary = compute_summary(df)
 
@@ -233,8 +232,8 @@ def test_canonical_column_already_present_is_not_overridden():
 
 
 def test_unrecognized_columns_still_raise_honest_missing_column_error():
-    """Если название колонки не входит ни в канонические, ни в известные
-    алиасы — не подставляем данные, честная ошибка остаётся, как и раньше."""
+    """If a column name is neither canonical nor a known alias, no data is
+    filled in and the honest error stays, as before."""
     unknown_header_csv = (
         "SomeDate,SomeChannel,impressions,clicks,conversions,spend,revenue\n"
         "2026-08-01,Google Ads,1000,50,5,200,800\n"

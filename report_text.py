@@ -1,23 +1,21 @@
 """
-Генерация текстовой части отчёта: сводка, инсайты, рекомендации.
+Generates the text part of the report: summary, insights, recommendations.
 
-Не покрыто TDD-циклом целиком, потому что итоговый текст — это проза,
-у неё нет единственного "правильного" результата, который можно
-проверить assert'ом. Но сами цифры, вокруг которых строится текст
-(ROI, CTR, лучший/худший канал), уже посчитаны и протестированы в
-report_engine.py — здесь только оборачиваем их в читаемый текст.
+Not fully covered by TDD, because the final text is prose with no single
+"correct" result to assert on. The numbers the text is built around (ROI, CTR,
+best/worst channel) are already computed and tested in report_engine.py; this
+module only wraps them in readable text.
 
-Весь текст, который видит пользователь (офлайн-шаблоны и промпт для
-Claude в онлайн-режиме), — на английском: демо показывается
-англоязычным агентствам, язык интерфейса и вывода должен совпадать.
+All user-facing text (offline templates and the Claude prompt in online mode)
+is in English: the demo is shown to English-speaking agencies, so the UI and
+output languages should match.
 
-Два режима:
-- Онлайн: есть ANTHROPIC_API_KEY И вызывающий код подтвердил allow_llm
-  (секретный demo-токен, см. app.py, добавлено 21.08.2026) -> Claude пишет
-  живой текст по цифрам.
-- Офлайн: любое из двух не выполнено -> подставляем цифры в заготовленные
-  шаблоны фраз. Качество ниже, но страница работает и это честно видно
-  в отчёте.
+Two modes:
+- Online: ANTHROPIC_API_KEY is set AND the caller confirmed allow_llm (secret
+  demo token, see app.py) -> Claude writes the text from the numbers.
+- Offline: either condition is missing -> the numbers are slotted into
+  prewritten phrase templates. Lower quality, but the page works and the mode
+  is shown in the report.
 """
 import json
 import os
@@ -75,17 +73,14 @@ def _offline_report(summary, channel_metrics, mode="offline"):
 
 
 def analyze_mismatched_document(df, allow_llm=False):
-    """Короткий AI-разбор загруженного файла, когда он прочитан (df есть),
-    но не подходит под схему кампании (нет нужных колонок). Добавлено
-    25.08.2026 по просьбе Макса.
+    """Short AI description of an uploaded file that was read (df exists) but
+    doesn't match the campaign schema (required columns missing).
 
-    Live-режим only, по решению Макса от 25.08.2026: без подтверждённого
-    demo-токена (allow_llm) или без ключа на сервере просто возвращаем
-    None — вызывающий код (app.py) в этом случае не покажет блок анализа,
-    останется только честная фраза "не хватает колонок". Никакого офлайн-
-    приближения не делаем: нельзя понять содержимое файла без модели, а
-    придумывать вывод по одним заголовкам колонок значило бы выдумывать
-    факты.
+    Live mode only: without a confirmed demo token (allow_llm) or without a
+    server-side key this returns None, and the caller (app.py) shows no
+    analysis block, only the plain "missing columns" message. There is no
+    offline approximation: the content of a file can't be understood without a
+    model, and guessing from column headers alone would mean inventing facts.
     """
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not (allow_llm and api_key):
@@ -118,27 +113,27 @@ def analyze_mismatched_document(df, allow_llm=False):
         text = message.content[0].text.strip()
         return text or None
     except Exception:
-        # Сеть, лимит, неожиданный формат ответа — что угодно. Не роняем
-        # страницу: без AI-разбора остаётся обычная честная ошибка о
-        # нехватке колонок, ровно как было бы без этой функции.
+        # Network error, rate limit, unexpected response shape, anything.
+        # Don't crash the page: without the AI description the user still gets
+        # the plain missing-columns error, as if this function didn't exist.
         return None
 
 
 def generate_report(summary, channel_metrics, allow_llm=False):
-    """Возвращает dict: headline, insights (list[str]), recommendations (list[str]), mode.
+    """Return a dict: headline, insights (list[str]), recommendations (list[str]), mode.
 
-    allow_llm включается только когда app.py проверил секретный demo-токен —
-    наличия ANTHROPIC_API_KEY на сервере одного недостаточно (страница
-    публичная, без этой проверки любой посетитель мог бы вызывать платный
-    API просто загрузив файл — исправлено 21.08.2026).
+    allow_llm is enabled only after app.py has verified the secret demo token.
+    A server-side ANTHROPIC_API_KEY alone is not enough: the page is public,
+    and without this check any visitor could trigger paid API calls just by
+    uploading a file.
     """
     api_key = os.environ.get("ANTHROPIC_API_KEY")
 
     if not (allow_llm and api_key):
         return _offline_report(summary, channel_metrics)
 
-    # Онлайн-режим: реальный вызов Claude. Не тестируем автоматически —
-    # тут нужен живой ключ и ручная проверка текста человеком.
+    # Online mode: a real Claude call. Not tested automatically: it needs a
+    # live key and a human review of the text.
     import anthropic
 
     client = anthropic.Anthropic(api_key=api_key)
@@ -158,7 +153,7 @@ def generate_report(summary, channel_metrics, allow_llm=False):
         messages=[{"role": "user", "content": prompt}],
     )
     raw = message.content[0].text
-    # Модель иногда оборачивает JSON в ```json ... ``` — снимаем обёртку.
+    # The model sometimes wraps JSON in ```json ... ```; strip the fence.
     raw = re.sub(r"^```(json)?|```$", "", raw.strip(), flags=re.MULTILINE).strip()
     try:
         data = json.loads(raw)
@@ -169,10 +164,10 @@ def generate_report(summary, channel_metrics, allow_llm=False):
             "mode": "online",
         }
     except (json.JSONDecodeError, TypeError):
-        # Модель не вернула валидный JSON — не роняем страницу и не выдаём
-        # пустой отчёт, откатываемся на офлайн-текст и честно помечаем это
-        # в mode, чтобы было видно, что живой текст не получился, а не
-        # тихо подменяем результат.
+        # The model didn't return valid JSON. Don't crash the page or return
+        # an empty report: fall back to offline text and mark it in `mode`, so
+        # it's visible the live text failed rather than silently swapping the
+        # result.
         return _offline_report(
             summary, channel_metrics,
             mode="offline (model response could not be parsed)",
